@@ -16,3 +16,19 @@ Comment json -- Adding "json" causes ToJSON and FromJSON instances to be derived
     userId UserId Maybe
     deriving Eq
     deriving Show
+
+HomicideData json
+    state Text
+    year Int
+    month Int
+    crimeSolved Bool
+    victimSex Text
+    victimAge Int
+    victimRace Text
+    perpetratorSex Text
+    perpetratorAge Int Maybe
+    perpetratorRace Text
+    relationship Text
+    victimCount Int 
+    weapon Text
+
