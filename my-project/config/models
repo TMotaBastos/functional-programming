@@ -26,7 +26,7 @@ HomicideData json
     victimAge Int
     victimRace Text
     perpetratorSex Text
-    perpetratorAge Int Maybe
+    perpetratorAge Text
     perpetratorRace Text
     relationship Text
     victimCount Int 
