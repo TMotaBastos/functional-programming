@@ -1,34 +1,212 @@
-document.getElementById(#{toJSON aDomId}).innerHTML = "This text was added by the Javascript part of the homepage widget.";
+var margin = {top:40,left:40,bottom:20,right:20};
+var totalWidth = 1000;
+var totalHeight = 4000;
+var width = totalWidth - margin.left - margin.right;
+var height = totalHeight - margin.top - margin.bottom;
+var chartsWidth = 900;
+var chartsHeight = 600;
+var barChartWidth = 910;
+var barChartHeight = 300;
 
-$(function() {
-  $("##{rawJS commentFormId}").submit(function(event) {
-    event.preventDefault();
+// svg's configuration
+var svg = d3.select("#graphics")
+    .append("svg")
+    .attr("width", totalWidth)
+    .attr("height", totalHeight)
+    .append("g")
+    .attr("transform","translate("+margin.left+","+margin.top+")");
 
-    var message = $("##{rawJS commentTextareaId}").val();
-    // (Browsers that enforce the "required" attribute on the textarea won't see this alert)
-    if (!message) {
-      alert("Please fill out the comment form first.");
-      return;
+var mapGroup = svg.append("g")
+    .attr("class", "mapGroup");
+
+var weaponGroup = svg.append("g")
+    .attr("class", "weaponGroup")
+    .attr("transform","translate(10,"+(margin.top+chartsHeight)+")");
+
+// real visualization
+var globalUsaMap;
+
+var projection = d3.geoAlbersUsa()
+                   .translate([chartsWidth / 2, chartsHeight / 2])
+                   .scale([1000]);
+
+var path = d3.geoPath()
+             .projection(projection);
+
+var max = 99783;
+var mapColorScale = d3.scaleLinear().domain([0, max]).range(["#fee0d2","#de2d26"]);
+
+var selectedStates = [];
+
+// tests purposes
+var homicidesInCalifornia = [];
+var homicidesInTexas = [];
+
+d3.json("https://raw.githubusercontent.com/TMotaBastos/homicide-analysis-visualizacao-2017-2/master/data/us-states.json", function(usaMap) {
+  // request data for each usa state
+  d3.csv("https://raw.githubusercontent.com/TMotaBastos/homicide-analysis-visualizacao-2017-2/master/data/database2.csv", function(homicides) {
+    console.log(homicides);
+    console.log(usaMap);
+
+    globalUsaMap = usaMap;
+    homicidesByStateChart(homicides, usaMap, true);
+    homicidesByWeaponChart(homicides);
+  })
+});
+
+// todo: remove parameter "first"
+function homicidesByStateChart(homicides, usaMap, first) {
+  // produce map with homicides by state
+  var homicidesByState = [];
+  for (var i = 0; i < homicides.length; i++) {
+    var state = homicides[i].State;
+    // tests purposes
+    if (first) {
+      if (state === "California") {
+        homicidesInCalifornia.push(homicides[i]);
+      }
+      if (state === "Texas") {
+        homicidesInTexas.push(homicides[i]);
+      }
     }
 
-    // Make an AJAX request to the server to create a new comment
-    $.ajax({
-      url: '@{CommentR}',
-      type: 'POST',
-      contentType: "application/json",
-      data: JSON.stringify({
-        message: message,
-      }),
-      success: function (data) {
-        var newNode = $("<li></li>");
-        newNode.text(data.message);
-        console.log(data);
-        $("##{rawJS commentListId}").append(newNode);
-      },
-      error: function (data) {
-        console.log("Error creating comment: " + data);
-      },
-    });
+    if (homicidesByState[state] == undefined) {
+      homicidesByState[state] = 1;
+    } else {
+      homicidesByState[state] += 1;
+    }
+  }
+  console.log(homicidesByState);
 
-  });
-});
+  mapGroup.selectAll("path")
+      .data(usaMap.features)
+      .enter()
+      .append("path")
+      .attr("class", "mapa")
+      .attr("d", path)
+      .attr("stroke", "black")
+      .attr("fill", state => {
+        state.properties.quantity = homicidesByState[state.properties.name]
+        return mapColorScale(homicidesByState[state.properties.name])
+      })
+      .on("mouseover", highlightState)
+      .on("mouseout", unhighlightState)
+      .on("click", clickedState)
+}
+
+function homicidesByWeaponChart(homicides) {
+  // produce bar chart with weapon
+  var homicidesByWeapon = []
+  for (var i = 0; i < homicides.length; i++) {
+    var weapon = homicides[i].Weapon;
+    if (homicidesByWeapon[weapon] == undefined) {
+      homicidesByWeapon[weapon] = 1;
+    } else {
+      homicidesByWeapon[weapon] += 1;
+    }
+  }
+  console.log(homicidesByWeapon);
+
+  var homicidesByWeaponObjects = [];
+  var weaponMax = 0;
+  for (var key in homicidesByWeapon) {
+    if (homicidesByWeapon[key] > weaponMax) {
+      weaponMax = homicidesByWeapon[key];
+    }
+    homicidesByWeaponObjects.push({weapon: key, quantity: homicidesByWeapon[key]});
+  }
+
+  var x = d3.scaleBand().rangeRound([0, barChartWidth]).padding(0.1)
+  var y = d3.scaleLinear().rangeRound([barChartHeight, 0]);
+
+  x.domain(homicides.map(function(d) { return d.Weapon; }));
+  y.domain([0, weaponMax]);
+
+  weaponGroup.selectAll("*").remove();
+
+  weaponGroup.append("g")
+      .attr("class", "axis axis--x")
+      .attr("transform", "translate(0," + (barChartHeight) + ")")
+      .call(d3.axisBottom(x));
+
+  weaponGroup.append("g")
+      .attr("class", "axis axis--y")
+      .call(d3.axisLeft(y))
+      .append("text")
+      .attr("transform", "rotate(-90)")
+      .attr("y", 6)
+      .attr("dy", "0.71em")
+      .attr("text-anchor", "end")
+      .text("Total");
+
+  weaponGroup.selectAll(".bar")
+      .data(homicidesByWeaponObjects)
+      .enter().append("rect")
+      .attr("class", "bar")
+      .attr("x", function(d) { return x(d.weapon); })
+      .attr("y", function(d) { return y(d.quantity); })
+      .attr("width", x.bandwidth())
+      .attr("height", function(d) { return barChartHeight - y(d.quantity); });
+}
+
+function highlightState(d) {
+  d3.select(this).style("fill", "orange");
+}
+
+function unhighlightState(d) {
+  if (!d.properties.selected) {
+    d3.select(this).style("fill", mapColorScale(d.properties.quantity));
+  } else {
+    d3.select(this).style("fill", "blue");
+  }
+}
+
+function clickedState(d) {
+  console.log(d.properties.name);
+  // tests purposes
+  if (d.properties.name === "California") {
+    console.log(homicidesInCalifornia);
+  }
+  if (d.properties.name === "Texas") {
+    console.log(homicidesInTexas);
+  }
+
+  if (!d.properties.selected) {
+    d3.select(this).style("fill", "blue");
+    d.properties.selected = true;
+
+    if (selectedStates.indexOf(d.properties.name) === -1) {
+      selectedStates.push(d.properties.name);
+      updateChartsWithSelectedStates(selectedStates);
+    }
+  } else {
+    d3.select(this).style("fill", mapColorScale(d.properties.quantity));
+    d.properties.selected = false;
+
+    var index = selectedStates.indexOf(d.properties.name);
+    selectedStates.splice(index, 1);
+    updateChartsWithSelectedStates(selectedStates);
+  }
+}
+
+function updateChartsWithSelectedStates(selectedStates) {
+  // tests purposes
+  if (selectedStates.length === 0) {
+    d3.csv("https://raw.githubusercontent.com/TMotaBastos/homicide-analysis-visualizacao-2017-2/master/data/database2.csv", function(homicides) {
+      homicidesByStateChart(homicides, globalUsaMap, false);
+      homicidesByWeaponChart(homicides);
+    });
+  } else {
+    var finalData = [];
+    for (var i = 0; i < selectedStates.length; i++) {
+      if (selectedStates[i] === "California") {
+        finalData.push.apply(finalData, homicidesInCalifornia);
+      }
+      if (selectedStates[i] === "Texas") {
+        finalData.push.apply(finalData, homicidesInTexas);
+      }
+    }
+    homicidesByStateChart(finalData, globalUsaMap, false);
+    homicidesByWeaponChart(finalData);
+  }
+}
