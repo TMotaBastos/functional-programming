@@ -21,7 +21,7 @@ data HomicideDataCsv = HomicideDataCsv
     ,relationship :: !String
     ,weapon :: !String
     ,victimCount :: !Int
-    }
+    }deriving (Show)
 
 data Person = Person 
     { name :: String
@@ -32,3 +32,10 @@ data Person = Person
 
 instance FromNamedRecord HomicideDataCsv where
     parseNamedRecord r = HomicideDataCsv <$> r .: "state" <*> r .: "year" <*> r .: "month" <*> r .: "crimeSolved" <*> r .: "victimSex" <*> r .: "victimAge" <*> r .: "victimRace" <*> r .: "perpetratorSex" <*> r .: "perpetratorAge" <*> r .: "perpetratorRace" <*> r .: "relationship" <*> r .: "weapon" <*> r .: "victimCount"
+
+getHomicideData = do
+                csvData <- BL.readFile "database2.csv"
+                case decodeByName csvData of
+                    Left err -> putStrLn err
+                    Right (_, v) -> V.forM_ v $ \ hd ->
+                        putStrLn $ state hd ++ " has " ++ crimeSolved hd
