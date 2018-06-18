@@ -1,11 +1,11 @@
 var margin = {top:40,left:40,bottom:20,right:20};
 var totalWidth = 1000;
-var totalHeight = 4000;
+var totalHeight = 2000;
 var width = totalWidth - margin.left - margin.right;
 var height = totalHeight - margin.top - margin.bottom;
 var chartsWidth = 900;
 var chartsHeight = 600;
-var barChartWidth = 910;
+var barChartWidth = 450//910;
 var barChartHeight = 300;
 
 // svg's configuration
@@ -23,6 +23,18 @@ var weaponGroup = svg.append("g")
     .attr("class", "weaponGroup")
     .attr("transform","translate(10,"+(margin.top+chartsHeight)+")");
 
+var relationshipGroup = svg.append("g")
+    .attr("class", "relationshipGroup")
+    .attr("transform","translate(" + (margin.left+barChartHeight+150) + ","+(margin.top+chartsHeight)+")");
+
+var perpetratorRaceGroup = svg.append("g")
+    .attr("class", "perpetratorRaceGroup")
+    .attr("transform","translate(80,"+(margin.top+chartsHeight+barChartWidth+120)+")");
+
+var victimRaceGroup = svg.append("g")
+    .attr("class", "victimRaceGroup")
+    .attr("transform","translate(" + (margin.left+barChartHeight+250) + ","+(margin.top+chartsHeight+barChartWidth+120)+")");
+
 // real visualization
 var globalUsaMap;
 
@@ -38,6 +50,8 @@ var mapColorScale = d3.scaleLinear().domain([0, max]).range(["#fee0d2","#de2d26"
 
 var selectedStates = [];
 
+var mapLabel;
+
 // tests purposes
 var homicidesInCalifornia = [];
 var homicidesInTexas = [];
@@ -51,6 +65,9 @@ d3.json("https://raw.githubusercontent.com/TMotaBastos/homicide-analysis-visuali
     globalUsaMap = usaMap;
     homicidesByStateChart(homicides, usaMap, true);
     homicidesByWeaponChart(homicides);
+    relationshipChart(homicides);
+    perpetratorRaceChart(homicides);
+    victimRaceChart(homicides);
   })
 });
 
@@ -77,6 +94,17 @@ function homicidesByStateChart(homicides, usaMap, first) {
     }
   }
   console.log(homicidesByState);
+
+  mapGroup.append("text")
+       .attr("transform", "translate(" + ((chartsWidth/2)-80) + "," + 0 + ")")
+       .style("font-size", "25px")
+       .text("Homicídios por Estado");
+
+  mapLabel = mapGroup.append("text")
+      .attr("transform", "translate(" + ((chartsWidth/2)-50) + "," + 40 + ")")
+      .style("font-size", "20px")
+      .attr("fill", "grey")
+      .text("Estado - Qtd Vítimas")
 
   mapGroup.selectAll("path")
       .data(usaMap.features)
@@ -124,20 +152,32 @@ function homicidesByWeaponChart(homicides) {
 
   weaponGroup.selectAll("*").remove();
 
-  weaponGroup.append("g")
-      .attr("class", "axis axis--x")
-      .attr("transform", "translate(0," + (barChartHeight) + ")")
+  weaponGroup.append("text")
+      .attr("transform", "translate(" + ((barChartHeight/2)-80) + "," + 0 + ")")
+      .style("font-size", "25px")
+      .text("Homicídios por Arma");
+
+  var xAxis = weaponGroup.append("g");
+  xAxis.attr("class", "axis axis--x")
+      .attr("transform", "rotate(90)translate(30," + -30 + ")")
       .call(d3.axisBottom(x));
 
-  weaponGroup.append("g")
-      .attr("class", "axis axis--y")
-      .call(d3.axisLeft(y))
+  xAxis.selectAll(".tick text")
+      .attr("transform", "rotate(-90)translate(-40,-12)");
+
+  var yAxis = weaponGroup.append("g");
+  yAxis.attr("class", "axis axis--y")
+      .attr("transform", "rotate(90)translate(" + (barChartWidth+30) + "," + -(barChartHeight+30) + ")")
+      .call(d3.axisRight(y))
       .append("text")
-      .attr("transform", "rotate(-90)")
+      .attr("transform", "rotate(90)")
       .attr("y", 6)
       .attr("dy", "0.71em")
       .attr("text-anchor", "end")
       .text("Total");
+
+  yAxis.selectAll(".tick text")
+      .attr("transform", "rotate(-45)translate(-2,8)");
 
   weaponGroup.selectAll(".bar")
       .data(homicidesByWeaponObjects)
@@ -145,12 +185,222 @@ function homicidesByWeaponChart(homicides) {
       .attr("class", "bar")
       .attr("x", function(d) { return x(d.weapon); })
       .attr("y", function(d) { return y(d.quantity); })
+      .attr("transform", "rotate(90)translate(30," + -(barChartHeight+30) + ")")
+      .attr("fill", "steelblue")
+      .attr("width", x.bandwidth())
+      .attr("height", function(d) { return barChartHeight - y(d.quantity); });
+}
+
+function relationshipChart(homicides) {
+  // produce bar chart with weapon
+  var relationships = []
+  for (var i = 0; i < homicides.length; i++) {
+    var relation = homicides[i].Relationship;
+    if (relationships[relation] == undefined) {
+      relationships[relation] = 1;
+    } else {
+      relationships[relation] += 1;
+    }
+  }
+  console.log(relationships);
+
+  var relationshipObjects = [];
+  var relationMax = 0;
+  for (var key in relationships) {
+    if (relationships[key] > relationMax) {
+      relationMax = relationships[key];
+    }
+    relationshipObjects.push({relation: key, quantity: relationships[key]});
+  }
+
+  var x = d3.scaleBand().rangeRound([0, barChartWidth]).padding(0.1)
+  var y = d3.scaleLinear().rangeRound([barChartHeight, 0]);
+
+  x.domain(homicides.map(function(d) { return d.Relationship; }));
+  y.domain([0, relationMax]);
+
+  relationshipGroup.selectAll("*").remove();
+
+  relationshipGroup.append("text")
+      .attr("transform", "translate(" + ((barChartHeight/2)-120) + "," + 0 + ")")
+      .style("font-size", "25px")
+      .text("Relacionamento Vítima/Assassino");
+
+  var xAxis = relationshipGroup.append("g");
+  xAxis.attr("class", "axis axis--x")
+      .attr("transform", "rotate(90)translate(30," + -30 + ")")
+      .call(d3.axisBottom(x));
+
+  xAxis.selectAll(".tick text")
+      .attr("transform", "rotate(-90)translate(-60,-12)");
+
+  var yAxis = relationshipGroup.append("g");
+  yAxis.attr("class", "axis axis--y")
+      .attr("transform", "rotate(90)translate(" + (barChartWidth+30) + "," + -(barChartHeight+30) + ")")
+      .call(d3.axisRight(y))
+      .append("text")
+      .attr("transform", "rotate(90)")
+      .attr("y", 6)
+      .attr("dy", "0.71em")
+      .attr("text-anchor", "end")
+      .text("Total");
+
+  yAxis.selectAll(".tick text")
+      .attr("transform", "rotate(-45)translate(-2,8)");
+
+  relationshipGroup.selectAll(".bar")
+      .data(relationshipObjects)
+      .enter().append("rect")
+      .attr("class", "bar")
+      .attr("x", function(d) { return x(d.relation); })
+      .attr("y", function(d) { return y(d.quantity); })
+      .attr("transform", "rotate(90)translate(30," + -(barChartHeight+30) + ")")
+      .attr("fill", "steelblue")
+      .attr("width", x.bandwidth())
+      .attr("height", function(d) { return barChartHeight - y(d.quantity); });
+}
+
+function perpetratorRaceChart(homicides) {
+  // produce bar chart with weapon
+  var perpetratorsRace = []
+  for (var i = 0; i < homicides.length; i++) {
+    var race = homicides[i]["Perpetrator Race"];
+    if (perpetratorsRace[race] == undefined) {
+      perpetratorsRace[race] = 1;
+    } else {
+      perpetratorsRace[race] += 1;
+    }
+  }
+  console.log(perpetratorsRace);
+
+  var perpetratorsRaceObjects = [];
+  var raceMax = 0;
+  for (var key in perpetratorsRace) {
+    if (perpetratorsRace[key] > raceMax) {
+      raceMax = perpetratorsRace[key];
+    }
+    perpetratorsRaceObjects.push({race: key, quantity: perpetratorsRace[key]});
+  }
+
+  var x = d3.scaleBand().rangeRound([0, barChartWidth]).padding(0.1)
+  var y = d3.scaleLinear().rangeRound([barChartHeight, 0]);
+
+  x.domain(homicides.map(function(d) { return d["Perpetrator Race"]; }));
+  y.domain([0, raceMax]);
+
+  perpetratorRaceGroup.selectAll("*").remove();
+
+  perpetratorRaceGroup.append("text")
+      .attr("transform", "translate(" + ((barChartHeight/2)-80) + "," + 0 + ")")
+      .style("font-size", "25px")
+      .text("Raça do Assassino");
+
+  var xAxis = perpetratorRaceGroup.append("g");
+  xAxis.attr("class", "axis axis--x")
+      .attr("transform", "rotate(90)translate(30," + -30 + ")")
+      .call(d3.axisBottom(x));
+
+  xAxis.selectAll(".tick text")
+      .attr("transform", "rotate(-90)translate(-80,-12)");
+
+  var yAxis = perpetratorRaceGroup.append("g");
+  yAxis.attr("class", "axis axis--y")
+      .attr("transform", "rotate(90)translate(" + (barChartWidth+30) + "," + -(barChartHeight+30) + ")")
+      .call(d3.axisRight(y))
+      .append("text")
+      .attr("transform", "rotate(90)")
+      .attr("y", 6)
+      .attr("dy", "0.71em")
+      .attr("text-anchor", "end")
+      .text("Total");
+
+  yAxis.selectAll(".tick text")
+      .attr("transform", "rotate(-45)translate(-2,8)");
+
+  perpetratorRaceGroup.selectAll(".bar")
+      .data(perpetratorsRaceObjects)
+      .enter().append("rect")
+      .attr("class", "bar")
+      .attr("x", function(d) { return x(d.race); })
+      .attr("y", function(d) { return y(d.quantity); })
+      .attr("transform", "rotate(90)translate(30," + -(barChartHeight+30) + ")")
+      .attr("fill", "steelblue")
+      .attr("width", x.bandwidth())
+      .attr("height", function(d) { return barChartHeight - y(d.quantity); });
+}
+
+function victimRaceChart(homicides) {
+  // produce bar chart with weapon
+  var victimsRace = []
+  for (var i = 0; i < homicides.length; i++) {
+    var race = homicides[i]["Victim Race"];
+    if (victimsRace[race] == undefined) {
+      victimsRace[race] = 1;
+    } else {
+      victimsRace[race] += 1;
+    }
+  }
+  console.log(victimsRace);
+
+  var victimsRaceObjects = [];
+  var raceMax = 0;
+  for (var key in victimsRace) {
+    if (victimsRace[key] > raceMax) {
+      raceMax = victimsRace[key];
+    }
+    victimsRaceObjects.push({race: key, quantity: victimsRace[key]});
+  }
+
+  var x = d3.scaleBand().rangeRound([0, barChartWidth]).padding(0.1)
+  var y = d3.scaleLinear().rangeRound([barChartHeight, 0]);
+
+  x.domain(homicides.map(function(d) { return d["Victim Race"]; }));
+  y.domain([0, raceMax]);
+
+  victimRaceGroup.selectAll("*").remove();
+
+  victimRaceGroup.append("text")
+      .attr("transform", "translate(" + ((barChartHeight/2)-80) + "," + 0 + ")")
+      .style("font-size", "25px")
+      .text("Raça da Vítima");
+
+  var xAxis = victimRaceGroup.append("g");
+  xAxis.attr("class", "axis axis--x")
+      .attr("transform", "rotate(90)translate(30," + -30 + ")")
+      .call(d3.axisBottom(x));
+
+  xAxis.selectAll(".tick text")
+      .attr("transform", "rotate(-90)translate(-80,-12)");
+
+  var yAxis = victimRaceGroup.append("g");
+  yAxis.attr("class", "axis axis--y")
+      .attr("transform", "rotate(90)translate(" + (barChartWidth+30) + "," + -(barChartHeight+30) + ")")
+      .call(d3.axisRight(y))
+      .append("text")
+      .attr("transform", "rotate(90)")
+      .attr("y", 6)
+      .attr("dy", "0.71em")
+      .attr("text-anchor", "end")
+      .text("Total");
+
+  yAxis.selectAll(".tick text")
+      .attr("transform", "rotate(-45)translate(-2,8)");
+
+  victimRaceGroup.selectAll(".bar")
+      .data(victimsRaceObjects)
+      .enter().append("rect")
+      .attr("class", "bar")
+      .attr("x", function(d) { return x(d.race); })
+      .attr("y", function(d) { return y(d.quantity); })
+      .attr("transform", "rotate(90)translate(30," + -(barChartHeight+30) + ")")
+      .attr("fill", "steelblue")
       .attr("width", x.bandwidth())
       .attr("height", function(d) { return barChartHeight - y(d.quantity); });
 }
 
 function highlightState(d) {
   d3.select(this).style("fill", "orange");
+  mapLabel.text(d.properties.name + " - " + d.properties.quantity);
 }
 
 function unhighlightState(d) {
@@ -193,8 +443,10 @@ function updateChartsWithSelectedStates(selectedStates) {
   // tests purposes
   if (selectedStates.length === 0) {
     d3.csv("https://raw.githubusercontent.com/TMotaBastos/homicide-analysis-visualizacao-2017-2/master/data/database2.csv", function(homicides) {
-      homicidesByStateChart(homicides, globalUsaMap, false);
       homicidesByWeaponChart(homicides);
+      relationshipChart(homicides);
+      perpetratorRaceChart(homicides);
+      victimRaceChart(homicides);
     });
   } else {
     var finalData = [];
@@ -206,7 +458,9 @@ function updateChartsWithSelectedStates(selectedStates) {
         finalData.push.apply(finalData, homicidesInTexas);
       }
     }
-    homicidesByStateChart(finalData, globalUsaMap, false);
     homicidesByWeaponChart(finalData);
+    relationshipChart(finalData);
+    perpetratorRaceChart(finalData);
+    victimRaceChart(finalData);
   }
 }
