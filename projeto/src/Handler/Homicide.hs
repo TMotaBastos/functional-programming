@@ -4,8 +4,7 @@ import Import
     
 getHomicideR :: Handler Value
 getHomicideR = do
-    let limit = 10
-    homicides <- runDB $ selectList [HomicideDataVictimAge >=. 0] [LimitTo limit]
+    homicides <- runDB $ selectList [HomicideDataVictimAge >=. 0] []
     -- requireJsonBody will parse the request body into the appropriate type, or return a 400 status code if the request JSON is invalid.
     -- (The ToJSON and FromJSON instances are derived in the config/models file).
     -- The YesodAuth instance in Foundation.hs defines the UserId to be the type used for authentication.
