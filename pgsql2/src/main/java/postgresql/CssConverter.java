@@ -37,9 +37,11 @@ public class CssConverter {
     this.connection.setAutoCommit(false);
     this.stm = this.connection.createStatement();
     ArrayList<HomicideData> homicideDataArrayList = new ArrayList<>();
+
+    int count = 0;
     while((nextRecord = csvReader.readNext()) != null){
         String[] hd = nextRecord;
-        HomicideData homicideData = new HomicideData(hd[0],
+        HomicideData homicideData = new HomicideData(hd[0].replace(" ", ""),
             Integer.parseInt(hd[1]),
             hd[2],
             convertToBoolean(hd[3]),
@@ -55,6 +57,11 @@ public class CssConverter {
       String values = homicideData.toSqlValue();
       String sql = this.insertDatabase + values;
       stm.executeUpdate(sql);
+
+      count++;
+      if (count % 100 == 0) {
+        System.out.println(count);
+      }
     }
     stm.close();
     connection.commit();
