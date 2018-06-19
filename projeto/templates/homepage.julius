@@ -1,34 +1,492 @@
-document.getElementById(#{toJSON aDomId}).innerHTML = "This text was added by the Javascript part of the homepage widget.";
+var margin = {top:40,left:40,bottom:20,right:20};
+var totalWidth = 1000;
+var totalHeight = 2000;
+var width = totalWidth - margin.left - margin.right;
+var height = totalHeight - margin.top - margin.bottom;
+var chartsWidth = 900;
+var chartsHeight = 600;
+var barChartWidth = 450//910;
+var barChartHeight = 300;
 
-$(function() {
-  $("##{rawJS commentFormId}").submit(function(event) {
-    event.preventDefault();
+// svg's configuration
+var svg = d3.select("#graphics")
+    .append("svg")
+    .attr("width", totalWidth)
+    .attr("height", totalHeight)
+    .append("g")
+    .attr("transform","translate("+margin.left+","+margin.top+")");
 
-    var message = $("##{rawJS commentTextareaId}").val();
-    // (Browsers that enforce the "required" attribute on the textarea won't see this alert)
-    if (!message) {
-      alert("Please fill out the comment form first.");
-      return;
+var mapGroup = svg.append("g")
+    .attr("class", "mapGroup");
+
+var weaponGroup = svg.append("g")
+    .attr("class", "weaponGroup")
+    .attr("transform","translate(10,"+(margin.top+chartsHeight)+")");
+
+var relationshipGroup = svg.append("g")
+    .attr("class", "relationshipGroup")
+    .attr("transform","translate(" + (margin.left+barChartHeight+150) + ","+(margin.top+chartsHeight)+")");
+
+var perpetratorRaceGroup = svg.append("g")
+    .attr("class", "perpetratorRaceGroup")
+    .attr("transform","translate(80,"+(margin.top+chartsHeight+barChartWidth+120)+")");
+
+var victimRaceGroup = svg.append("g")
+    .attr("class", "victimRaceGroup")
+    .attr("transform","translate(" + (margin.left+barChartHeight+250) + ","+(margin.top+chartsHeight+barChartWidth+120)+")");
+
+// data configuration
+
+var allDataLink = "http://localhost:3000/homicide";
+
+var stateDataLink = "http://localhost:3000/homicide/state/";
+
+// real visualization
+var globalUsaMap;
+
+var projection = d3.geoAlbersUsa()
+                   .translate([chartsWidth / 2, chartsHeight / 2])
+                   .scale([1000]);
+
+var path = d3.geoPath()
+             .projection(projection);
+
+var max = 99783;
+var mapColorScale = d3.scaleLinear().domain([0, max]).range(["#fee0d2","#de2d26"]);
+
+var selectedStates = [];
+
+var mapLabel;
+
+// tests purposes
+var homicidesInCalifornia = [];
+var homicidesInTexas = [];
+
+d3.json("https://raw.githubusercontent.com/TMotaBastos/homicide-analysis-visualizacao-2017-2/master/data/us-states.json", function(usaMap) {
+  // request data for each usa state
+  d3.json(allDataLink, function(homicides) {
+    console.log(homicides);
+    console.log(usaMap);
+
+    globalUsaMap = usaMap;
+    homicidesByStateChart(homicides, usaMap, true);
+    homicidesByWeaponChart(homicides);
+    relationshipChart(homicides);
+    perpetratorRaceChart(homicides);
+    victimRaceChart(homicides);
+  })
+});
+
+// todo: remove parameter "first"
+function homicidesByStateChart(homicides, usaMap, first) {
+  // produce map with homicides by state
+  var homicidesByState = [];
+  for (var i = 0; i < homicides.length; i++) {
+    var state = homicides[i].state;
+
+    // put spaces
+    if (state === "NewMexico") {
+      state = "New Mexico";
+    } else if (state === "SouthDakota") {
+      state = "South Dakota";
+    } else if (state === "NorthDakota") {
+      state = "North Dakota";
+    } else if (state === "SouthCarolina") {
+      state = "South Carolina";
+    } else if (state === "NorthCarolina") {
+      state = "North Carolina";
+    } else if (state === "WestVirginia") {
+      state = "West Virginia";
+    } else if (state === "NewJersey") {
+      state = "New Jersey";
+    } else if (state === "NewYork") {
+      state = "New York";
+    } else if (state === "NewHampshire") {
+      state = "New Hampshire";
+    } else if (state === "RhodeIsland") {
+      state = "Rhode Island";
     }
 
-    // Make an AJAX request to the server to create a new comment
-    $.ajax({
-      url: '@{CommentR}',
-      type: 'POST',
-      contentType: "application/json",
-      data: JSON.stringify({
-        message: message,
-      }),
-      success: function (data) {
-        var newNode = $("<li></li>");
-        newNode.text(data.message);
-        console.log(data);
-        $("##{rawJS commentListId}").append(newNode);
-      },
-      error: function (data) {
-        console.log("Error creating comment: " + data);
-      },
-    });
+    if (homicidesByState[state] == undefined) {
+      homicidesByState[state] = 1;
+    } else {
+      homicidesByState[state] += 1;
+    }
+  }
+  console.log(homicidesByState);
 
-  });
-});
+  mapGroup.append("text")
+       .attr("transform", "translate(" + ((chartsWidth/2)-80) + "," + 0 + ")")
+       .style("font-size", "25px")
+       .text("Homicídios por Estado");
+
+  mapLabel = mapGroup.append("text")
+      .attr("transform", "translate(" + ((chartsWidth/2)-50) + "," + 40 + ")")
+      .style("font-size", "20px")
+      .attr("fill", "grey")
+      .text("Estado - Qtd Vítimas")
+
+  mapGroup.selectAll("path")
+      .data(usaMap.features)
+      .enter()
+      .append("path")
+      .attr("class", "mapa")
+      .attr("d", path)
+      .attr("stroke", "black")
+      .attr("fill", state => {
+        state.properties.quantity = homicidesByState[state.properties.name]
+        return mapColorScale(homicidesByState[state.properties.name])
+      })
+      .on("mouseover", highlightState)
+      .on("mouseout", unhighlightState)
+      .on("click", clickedState)
+}
+
+function homicidesByWeaponChart(homicides) {
+  // produce bar chart with weapon
+  var homicidesByWeapon = []
+  for (var i = 0; i < homicides.length; i++) {
+    var weapon = homicides[i].weapon;
+    if (homicidesByWeapon[weapon] == undefined) {
+      homicidesByWeapon[weapon] = 1;
+    } else {
+      homicidesByWeapon[weapon] += 1;
+    }
+  }
+
+  var homicidesByWeaponObjects = [];
+  var weaponMax = 0;
+  for (var key in homicidesByWeapon) {
+    if (homicidesByWeapon[key] > weaponMax) {
+      weaponMax = homicidesByWeapon[key];
+    }
+    homicidesByWeaponObjects.push({weapon: key, quantity: homicidesByWeapon[key]});
+  }
+
+  var x = d3.scaleBand().rangeRound([0, barChartWidth]).padding(0.1)
+  var y = d3.scaleLinear().rangeRound([barChartHeight, 0]);
+
+  x.domain(homicides.map(function(d) { return d.weapon; }));
+  y.domain([0, weaponMax]);
+
+  weaponGroup.selectAll("*").remove();
+
+  weaponGroup.append("text")
+      .attr("transform", "translate(" + ((barChartHeight/2)-80) + "," + 0 + ")")
+      .style("font-size", "25px")
+      .text("Homicídios por Arma");
+
+  var xAxis = weaponGroup.append("g");
+  xAxis.attr("class", "axis axis--x")
+      .attr("transform", "rotate(90)translate(30," + -30 + ")")
+      .call(d3.axisBottom(x));
+
+  xAxis.selectAll(".tick text")
+      .attr("transform", "rotate(-90)translate(-40,-12)");
+
+  var yAxis = weaponGroup.append("g");
+  yAxis.attr("class", "axis axis--y")
+      .attr("transform", "rotate(90)translate(" + (barChartWidth+30) + "," + -(barChartHeight+30) + ")")
+      .call(d3.axisRight(y))
+      .append("text")
+      .attr("transform", "rotate(90)")
+      .attr("y", 6)
+      .attr("dy", "0.71em")
+      .attr("text-anchor", "end")
+      .text("Total");
+
+  yAxis.selectAll(".tick text")
+      .attr("transform", "rotate(-45)translate(-2,8)");
+
+  weaponGroup.selectAll(".bar")
+      .data(homicidesByWeaponObjects)
+      .enter().append("rect")
+      .attr("class", "bar")
+      .attr("x", function(d) { return x(d.weapon); })
+      .attr("y", function(d) { return y(d.quantity); })
+      .attr("transform", "rotate(90)translate(30," + -(barChartHeight+30) + ")")
+      .attr("fill", "steelblue")
+      .attr("width", x.bandwidth())
+      .attr("height", function(d) { return barChartHeight - y(d.quantity); });
+}
+
+function relationshipChart(homicides) {
+  // produce bar chart with weapon
+  var relationships = []
+  for (var i = 0; i < homicides.length; i++) {
+    var relation = homicides[i].relationship;
+    if (relationships[relation] == undefined) {
+      relationships[relation] = 1;
+    } else {
+      relationships[relation] += 1;
+    }
+  }
+
+  var relationshipObjects = [];
+  var relationMax = 0;
+  for (var key in relationships) {
+    if (relationships[key] > relationMax) {
+      relationMax = relationships[key];
+    }
+    relationshipObjects.push({relation: key, quantity: relationships[key]});
+  }
+
+  var x = d3.scaleBand().rangeRound([0, barChartWidth]).padding(0.1)
+  var y = d3.scaleLinear().rangeRound([barChartHeight, 0]);
+
+  x.domain(homicides.map(function(d) { return d.relationship; }));
+  y.domain([0, relationMax]);
+
+  relationshipGroup.selectAll("*").remove();
+
+  relationshipGroup.append("text")
+      .attr("transform", "translate(" + ((barChartHeight/2)-120) + "," + 0 + ")")
+      .style("font-size", "25px")
+      .text("Relacionamento Vítima/Assassino");
+
+  var xAxis = relationshipGroup.append("g");
+  xAxis.attr("class", "axis axis--x")
+      .attr("transform", "rotate(90)translate(30," + -30 + ")")
+      .call(d3.axisBottom(x));
+
+  xAxis.selectAll(".tick text")
+      .attr("transform", "rotate(-90)translate(-60,-12)");
+
+  var yAxis = relationshipGroup.append("g");
+  yAxis.attr("class", "axis axis--y")
+      .attr("transform", "rotate(90)translate(" + (barChartWidth+30) + "," + -(barChartHeight+30) + ")")
+      .call(d3.axisRight(y))
+      .append("text")
+      .attr("transform", "rotate(90)")
+      .attr("y", 6)
+      .attr("dy", "0.71em")
+      .attr("text-anchor", "end")
+      .text("Total");
+
+  yAxis.selectAll(".tick text")
+      .attr("transform", "rotate(-45)translate(-2,8)");
+
+  relationshipGroup.selectAll(".bar")
+      .data(relationshipObjects)
+      .enter().append("rect")
+      .attr("class", "bar")
+      .attr("x", function(d) { return x(d.relation); })
+      .attr("y", function(d) { return y(d.quantity); })
+      .attr("transform", "rotate(90)translate(30," + -(barChartHeight+30) + ")")
+      .attr("fill", "steelblue")
+      .attr("width", x.bandwidth())
+      .attr("height", function(d) { return barChartHeight - y(d.quantity); });
+}
+
+function perpetratorRaceChart(homicides) {
+  // produce bar chart with weapon
+  var perpetratorsRace = []
+  for (var i = 0; i < homicides.length; i++) {
+    var race = homicides[i].perpetratorRace;
+    if (perpetratorsRace[race] == undefined) {
+      perpetratorsRace[race] = 1;
+    } else {
+      perpetratorsRace[race] += 1;
+    }
+  }
+
+  var perpetratorsRaceObjects = [];
+  var raceMax = 0;
+  for (var key in perpetratorsRace) {
+    if (perpetratorsRace[key] > raceMax) {
+      raceMax = perpetratorsRace[key];
+    }
+    perpetratorsRaceObjects.push({race: key, quantity: perpetratorsRace[key]});
+  }
+
+  var x = d3.scaleBand().rangeRound([0, barChartWidth]).padding(0.1)
+  var y = d3.scaleLinear().rangeRound([barChartHeight, 0]);
+
+  x.domain(homicides.map(function(d) { return d.perpetratorRace; }));
+  y.domain([0, raceMax]);
+
+  perpetratorRaceGroup.selectAll("*").remove();
+
+  perpetratorRaceGroup.append("text")
+      .attr("transform", "translate(" + ((barChartHeight/2)-80) + "," + 0 + ")")
+      .style("font-size", "25px")
+      .text("Raça do Assassino");
+
+  var xAxis = perpetratorRaceGroup.append("g");
+  xAxis.attr("class", "axis axis--x")
+      .attr("transform", "rotate(90)translate(30," + -30 + ")")
+      .call(d3.axisBottom(x));
+
+  xAxis.selectAll(".tick text")
+      .attr("transform", "rotate(-90)translate(-80,-12)");
+
+  var yAxis = perpetratorRaceGroup.append("g");
+  yAxis.attr("class", "axis axis--y")
+      .attr("transform", "rotate(90)translate(" + (barChartWidth+30) + "," + -(barChartHeight+30) + ")")
+      .call(d3.axisRight(y))
+      .append("text")
+      .attr("transform", "rotate(90)")
+      .attr("y", 6)
+      .attr("dy", "0.71em")
+      .attr("text-anchor", "end")
+      .text("Total");
+
+  yAxis.selectAll(".tick text")
+      .attr("transform", "rotate(-45)translate(-2,8)");
+
+  perpetratorRaceGroup.selectAll(".bar")
+      .data(perpetratorsRaceObjects)
+      .enter().append("rect")
+      .attr("class", "bar")
+      .attr("x", function(d) { return x(d.race); })
+      .attr("y", function(d) { return y(d.quantity); })
+      .attr("transform", "rotate(90)translate(30," + -(barChartHeight+30) + ")")
+      .attr("fill", "steelblue")
+      .attr("width", x.bandwidth())
+      .attr("height", function(d) { return barChartHeight - y(d.quantity); });
+}
+
+function victimRaceChart(homicides) {
+  // produce bar chart with weapon
+  var victimsRace = []
+  for (var i = 0; i < homicides.length; i++) {
+    var race = homicides[i].victimRace;
+    if (victimsRace[race] == undefined) {
+      victimsRace[race] = 1;
+    } else {
+      victimsRace[race] += 1;
+    }
+  }
+
+  var victimsRaceObjects = [];
+  var raceMax = 0;
+  for (var key in victimsRace) {
+    if (victimsRace[key] > raceMax) {
+      raceMax = victimsRace[key];
+    }
+    victimsRaceObjects.push({race: key, quantity: victimsRace[key]});
+  }
+
+  var x = d3.scaleBand().rangeRound([0, barChartWidth]).padding(0.1)
+  var y = d3.scaleLinear().rangeRound([barChartHeight, 0]);
+
+  x.domain(homicides.map(function(d) { return d.victimRace; }));
+  y.domain([0, raceMax]);
+
+  victimRaceGroup.selectAll("*").remove();
+
+  victimRaceGroup.append("text")
+      .attr("transform", "translate(" + ((barChartHeight/2)-80) + "," + 0 + ")")
+      .style("font-size", "25px")
+      .text("Raça da Vítima");
+
+  var xAxis = victimRaceGroup.append("g");
+  xAxis.attr("class", "axis axis--x")
+      .attr("transform", "rotate(90)translate(30," + -30 + ")")
+      .call(d3.axisBottom(x));
+
+  xAxis.selectAll(".tick text")
+      .attr("transform", "rotate(-90)translate(-80,-12)");
+
+  var yAxis = victimRaceGroup.append("g");
+  yAxis.attr("class", "axis axis--y")
+      .attr("transform", "rotate(90)translate(" + (barChartWidth+30) + "," + -(barChartHeight+30) + ")")
+      .call(d3.axisRight(y))
+      .append("text")
+      .attr("transform", "rotate(90)")
+      .attr("y", 6)
+      .attr("dy", "0.71em")
+      .attr("text-anchor", "end")
+      .text("Total");
+
+  yAxis.selectAll(".tick text")
+      .attr("transform", "rotate(-45)translate(-2,8)");
+
+  victimRaceGroup.selectAll(".bar")
+      .data(victimsRaceObjects)
+      .enter().append("rect")
+      .attr("class", "bar")
+      .attr("x", function(d) { return x(d.race); })
+      .attr("y", function(d) { return y(d.quantity); })
+      .attr("transform", "rotate(90)translate(30," + -(barChartHeight+30) + ")")
+      .attr("fill", "steelblue")
+      .attr("width", x.bandwidth())
+      .attr("height", function(d) { return barChartHeight - y(d.quantity); });
+}
+
+function highlightState(d) {
+  d3.select(this).style("fill", "orange");
+  mapLabel.text(d.properties.name + " - " + d.properties.quantity);
+}
+
+function unhighlightState(d) {
+  if (!d.properties.selected) {
+    d3.select(this).style("fill", mapColorScale(d.properties.quantity));
+  } else {
+    d3.select(this).style("fill", "blue");
+  }
+}
+
+function clickedState(d) {
+  console.log(d.properties.name);
+
+  if (!d.properties.selected) {
+    d3.select(this).style("fill", "blue");
+    d.properties.selected = true;
+
+    addStateData(d.properties.name);
+  } else {
+    d3.select(this).style("fill", mapColorScale(d.properties.quantity));
+    d.properties.selected = false;
+
+    removeStateData(d.properties.name);
+    updateChartsWithSelectedStates();
+  }
+}
+
+function updateChartsWithSelectedStates() {
+  if (selectedStates.length === 0) {
+    d3.json(allDataLink, function(homicides) {
+      homicidesByWeaponChart(homicides);
+      relationshipChart(homicides);
+      perpetratorRaceChart(homicides);
+      victimRaceChart(homicides);
+    });
+  } else {
+    var finalData = [];
+    for (var i = 0; i < selectedStates.length; i++) {
+      finalData.push.apply(finalData, selectedStates[i].homicides);
+    }
+    homicidesByWeaponChart(finalData);
+    relationshipChart(finalData);
+    perpetratorRaceChart(finalData);
+    victimRaceChart(finalData);
+  }
+}
+
+// state with space
+function addStateData(selectedState) {
+  var alreadyExists = false;
+  for (var i = 0; i < selectedStates.length; i++) {
+    if (selectedStates[i].state === selectedState) {
+      alreadyExists = true;
+    }
+  }
+
+  if(!alreadyExists) {
+    d3.json(stateDataLink + (selectedState.replace(" ", "")), function(data) {
+      selectedStates.push({state: selectedState, homicides: data});
+      updateChartsWithSelectedStates();
+    });
+  }
+}
+
+function removeStateData(selectedState) {
+  var tempSelectedStates = []
+  for (var i = 0; i < selectedStates.length; i++) {
+    if (selectedStates[i].state !== selectedState) {
+      tempSelectedStates.push(selectedStates[i]);
+    }
+  }
+  selectedStates = tempSelectedStates;
+}
