@@ -310,7 +310,7 @@ function perpetratorRaceChart(homicides) {
   perpetratorRaceGroup.append("text")
       .attr("transform", "translate(" + ((barChartHeight/2)-80) + "," + 0 + ")")
       .style("font-size", "25px")
-      .text("Raça do Assassino");
+      .text("Etnicidade do Assassino");
 
   var xAxis = perpetratorRaceGroup.append("g");
   xAxis.attr("class", "axis axis--x")
@@ -378,7 +378,7 @@ function victimRaceChart(homicides) {
   victimRaceGroup.append("text")
       .attr("transform", "translate(" + ((barChartHeight/2)-80) + "," + 0 + ")")
       .style("font-size", "25px")
-      .text("Raça da Vítima");
+      .text("Etnicidade da Vítima");
 
   var xAxis = victimRaceGroup.append("g");
   xAxis.attr("class", "axis axis--x")
